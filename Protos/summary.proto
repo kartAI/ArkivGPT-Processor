@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+option csharp_namespace = "GrpcGreeter";
+
+package summary;
+
+// The greeting service definition.
+service Summary {
+  // Sends a greeting
+  rpc SaySummary (SummaryRequest) returns (SummaryReply);
+}
+
+// The request message containing the user's name.
+message SummaryRequest {
+  string Gnr = 1;
+  string Bnr = 2;
+  string Snr = 3;
+}
+
+// The response message containing the greetings.
+message SummaryReply {
+  string Resolution = 1;
+  string Document = 2;
+}
