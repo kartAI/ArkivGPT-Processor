@@ -1,4 +1,4 @@
-using GrpcGreeter.Services;
+using ArkivGPT_Processor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 

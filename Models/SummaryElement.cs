@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace ArkivGPT;
+namespace ArkivGPT_Processor.Models;
 
 public record class SummaryElement
 {

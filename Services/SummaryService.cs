@@ -1,9 +1,8 @@
-using ArkivGPT;
+using Azure;
 using Azure.AI.OpenAI;
 using Grpc.Core;
-using Azure;
 
-namespace GrpcGreeter.Services;
+namespace ArkivGPT_Processor.Services;
 
 public class SummaryService : Summary.SummaryBase
 {
