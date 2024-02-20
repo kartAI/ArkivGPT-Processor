@@ -7,14 +7,14 @@ package summary;
 // The greeting service definition.
 service Summary {
   // Sends a greeting
-  rpc SaySummary (SummaryRequest) returns (SummaryReply);
+  rpc SaySummary (SummaryRequest) returns (stream SummaryReply);
 }
 
 // The request message containing the user's name.
 message SummaryRequest {
-  string Gnr = 1;
-  string Bnr = 2;
-  string Snr = 3;
+  int32 Gnr = 1;
+  int32 Bnr = 2;
+  int32 Snr = 3;
 }
 
 // The response message containing the greetings.
