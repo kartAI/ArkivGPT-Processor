@@ -15,10 +15,12 @@ public class SummaryService : Summary.SummaryBase
 
     private readonly string _endPoint = File.ReadAllText("../GPT.endpoint");
     private readonly string _apiKey = File.ReadAllText("../GPT.key");
+    private GeoDocClient _client;
 
     public SummaryService(ILogger<SummaryService> logger)
     {
         _logger = logger;
+        _client = new GeoDocClient();
     }
 
     public async Task<String> GetGeoDocRecords(string gnr, string bnr, string snr)
@@ -73,7 +75,16 @@ public class SummaryService : Summary.SummaryBase
         SummaryRequest request, IServerStreamWriter<SummaryReply> responseStream, ServerCallContext context)
     {
         //var records = GetGeoDocRecords(request.Gnr, request.Bnr, request.Snr);
+        await _client.AuthenticateAsync();
+        var searchResult = await _client.SearchDocumentsAsyncVedtak(request.Gnr, request.Bnr);
+        
+        Console.WriteLine(searchResult);
 
+        await _client.DownloadVedtakDocument(searchResult);
+        
+        
+        
+        
         var records = new List<string>()
         {
             "2014 By- og miljøutvalget godkjenner deling som omsøkt da det foreligger en klar overvekt av argumenter for å kunne gi dispensasjon fra plankravet og pbl §1-8. Kravet til sandlekeplass gis rettighet til evigvarende kyststi og tilsvarende mulighet for opparbeide en allment tilgjengelig badeplass på eiendommen i tråd med situasjonsplanen som medfølger søknaden. For øvrig gjelder vilkårene skissert i saksfremleggets side 8.",
@@ -83,7 +94,7 @@ public class SummaryService : Summary.SummaryBase
         foreach (var record in records)
         {
             _logger.LogInformation("Getting GPT response");
-            var gptResponse = await GetGPTResponse(record);
+            var gptResponse = await GetDummyGPTResponse(record);
             _logger.LogInformation("Sending back response to gateway: " + gptResponse);
             await responseStream.WriteAsync(new SummaryReply()
             {
