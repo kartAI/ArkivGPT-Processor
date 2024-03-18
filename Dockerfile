@@ -12,8 +12,8 @@ RUN dotnet publish -c Release -o out
 
 # Generate runtime image
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS dev-env
-WORKDIR /service
-COPY --from=build-env /service/out .
+WORKDIR /processor
+COPY --from=build-env /processor/out .
 COPY GPT.* ./../
 
 RUN dotnet dev-certs https --trust
