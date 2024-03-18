@@ -14,7 +14,7 @@ RUN dotnet publish -c Release -o out
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS dev-env
 WORKDIR /service
 COPY --from=build-env /service/out .
-COPY GPT.* ./..
+COPY GPT.* ./../
 
 RUN dotnet dev-certs https --trust
 

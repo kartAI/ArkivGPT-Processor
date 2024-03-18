@@ -5,6 +5,7 @@ using ArkivGPT_Processor.Models;
 using Azure;
 using Azure.AI.OpenAI;
 using Grpc.Core;
+using Grpc.Net.Client;
 using Microsoft.AspNetCore.WebUtilities;
 
 namespace ArkivGPT_Processor.Services;
@@ -68,116 +69,74 @@ public class SummaryService : Summary.SummaryBase
         return message;
     }
 
+    public async Task<string> GetOCR(ServerCallContext context, string filename)
+    {
+        _logger.LogInformation("Creating new route to processor");
+        // Use this to send the data were it is supposed to go
+        var serverAddress = Environment.GetEnvironmentVariable("GRPC_SERVER_ADDRESS") ?? "http://localhost:5001"; // To handel docker and local
+        using var channel = GrpcChannel.ForAddress(serverAddress);
+        var client = new Ocr.OcrClient(channel);
+        
+        _logger.LogInformation("Getting reply from ocr");
+
+        try
+        {
+            var timeoutToken = new CancellationTokenSource(TimeSpan.FromSeconds(60)).Token;
+            var clientDisconnectToken = context.CancellationToken;
+            var linkTokenSource = CancellationTokenSource.CreateLinkedTokenSource(timeoutToken, clientDisconnectToken);
+            var reply = await client.SendOCRAsync(new OcrRequest { Filename = filename });
+            
+            Console.WriteLine("Reply received from OCR: " + reply.Text);
+            return reply.Text;
+
+        }
+        catch (RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.Cancelled)
+        {
+            Console.WriteLine("Stream cancelled.");
+        }
+        
+        return null;
+    }
+
 
     public override async Task<SummaryReply> SaySummary(
         SummaryRequest request, IServerStreamWriter<SummaryReply> responseStream, ServerCallContext context)
     {
+        // Get text from document
+        /*string folder = "./Files/2-2/";
+        var files = Directory.GetFiles(folder);
+        foreach (var file in files)
+        {
+            var text = GetOCR(context, folder + file);
+            Console.WriteLine("TEXT RECEIVED FROM OCR: " + text);
+        }*/
+
+        // Download documents
         //var records = GetGeoDocRecords(request.Gnr, request.Bnr, request.Snr);
 
         var records = new List<string>()
         {
-            "By- og miljøutvalget godkjenner deling som omsøkt da det foreligger en klar overvekt av argumenter for å kunne gi dispensasjon fra plankravet og pbl §1-8. Kravet til sandlekeplass gis rettighet til evigvarende kyststi og tilsvarende mulighet for opparbeide en allment tilgjengelig badeplass på eiendommen i tråd med situasjonsplanen som medfølger søknaden. For øvrig gjelder vilkårene skissert i saksfremleggets side 8.",
-            @"PLAN-, BYGG- OG OPPMÅLINGSETATEN Byggesaksavdelingen 
-Flekkerøy Bygg AS Østerøya 39 
-4625 FLEKKERØY 
-Vår ref.: 
-201508185-8 /CAB 
-(Bes oppgitt ved henvendelse) 
-Deres ref.: 
-Dato: 
-Kristiansand, 11.10.2016 
-ANDEM BONA 
-KRISTIANSAND KOMMUNE 
-Skudeviga 33 - 4/10 - Mottatt mangelfull søknad om dispensasjon for utvidelse av 
-brygge 
-Byggeplass: 
-Skudeviga 33 
-Ansvarlig søker: 
-Flekkerøy Bygg AS 
-Eiendom: 
-Adresse: 
-4/10 
-Østerøya 39 
-4625 FLEKKERØY 
-Tiltakshaver: 
-Olav Øystein Kristoffersen 
-Adresse: 
-Skudeviga 33 4625 FLEKKERØY 
-Tiltakstype/tiltaksart: Brygger /Vesentlig utvidelse 
-Det vises til søknad om dispensasjon og rammetillatelse mottatt 9.7.2015. Vi beklager den lange saksbehandlingstiden da disse sjøbodsakene på Flekkerøy er kompliserte og tidkrevende. 
-Da søknaden gjelder flere tiltak er det av praktiske årsaker opprettet tre saker. En som omfatter bruksendring til kombinert bruk av sjøboden lengst nord på eiendommen, arkivsaksnr. 201508223, en som omfatter utvidelse av brygge, arkivsaksnr. 201508185 og en som omfatter påbygging, fasadeendring og bruksendring til kombinert bruk av sjøboden som er vestvendt, arkivsaksnr. 201508225. Dette brevet gjelder utvidelse av brygge. 
-Etter en gjennomgang av søknaden er det registrert manglende dokumentasjon og den kan ikke behandles før den er komplett. 
-I kommunedelplanens arealdel er det plankrav og området der brygga ligger er avsatt til LNF-formål. Utvidelse av brygge er dermed også i strid med arealformålet. Denne brygga kommer ikke inn under bestemmelsen som gjelder brygger § 3 bokstav G. I tillegg vises til byggeforbudet i 100-metersbeltet til sjøen, plan- og bygningsloven (pbl) § 1-8. 
-Det vises til at det generelle hensynet bak plankravet i kommunedelplanen er at kommunen vil sikre en forsvarlig og gjennomtenkt utvikling av arealutnyttelsen i området. Viktig er ulemper for naboer og allmennhetens tilgang til friluftsområder og sjøen. En bestemmelse om plankrav før tiltak kan gjennomføres, gir styring med den samlede arealutnyttelsen og arealbruken i byggeområdene. Plankravet skal videre sikre en forsvarlig opplysning i saken, bl.a. få frem hvilke konsekvenser en tillatelse vil kunne innebære for utviklingen i området. De berørtes interesser, nasjonal strandsonepolitikk, herunder konsekvensene for allmennheten, friluftsområdene og sjønære arealer, vil ved utarbeidelse av plan bli vurdert i et helhetsperspektiv. 
-Postadresse 
-Kristiansand kommune 
-Byggesaksavdelingen Postboks 417 Lund 
-4604 KRISTIANSAND S 
-Besøksadresse Rådhusgata 18 Kristiansand Vår saksbehandler Cathrine Bie 
-Telefon 
-+47 38 24 31 96 
-E-postadresse 
-post.teknisk@kristiansand.kommune.no 
-Webadresse 
-http://www.kristiansand.kommune.no 
-Foretaksregisteret 
-NO963296746 
-Videre vises til hensynet bak LNF-formålet (landbruks,- natur,- og friluftsområde) og pbl § 1-8 «<Forbud mot tiltak mv. langs sjø og vassdrag>>: 
-Stortinget har gitt 100-metersbeltet langs sjøen en særskilt beskyttelse. Det er et nasjonalt mål at dette området skal bevares som natur- og friluftsområde tilgjengelig for alle, jf. St.meld. nr. 26 (2006- 2007). I 100-metersbeltet skal det derfor tas særlig hensyn til naturmiljø, landskap, friluftsliv og andre allmenne interesser. Nedbygging av strandsonen bør unngås. Det skal svært mye til for å tillate nye byggetiltak i LNF- områder i strandsonen. 
-Følgende mangler er registrert og bes innsendt: 
-Mottatt søknad om dispensasjon er ikke tilstrekkelig begrunnet jamfør nevnte hensyn over. En revidert søknad med relevante begrunnelser på hvorfor hensynene til bestemmelsene ikke blir vesentlig tilsidesatt i dette tilfellet og om fordelene er i overvekt jamfør pbl. §§ 19-1 og 19-2 må innsendes. 
-Saken legges i bero til etterspurt dokumentasjon er mottatt. 
-Manglene bes innsendt snarest mulig og innen 60 dager fra mottakelse av dette brevet. Ved spørsmål til saken kan det tas kontakt med undertegnede på mobil: 480 93 629 eller e-post: 
-cathrine.bie@kristiansand.kommune.no. 
-Med hilsen 
-Cathrine Bie 
-Saksbehandler 
-Dokumentet er godkjent elektronisk og gyldig uten underskrift 
-Kopi: 
-Olav Øystein Kristoffersen, Skudeviga 33, 4625 FLEKKERØY 
-2 
-"
+            "String 1",
+            "String 2",
+            "String 3"
         };
 
-        foreach (var record in records)
+        var counter = 0;
+
+        for (var i = request.StartId; i < records.Count; i++)
         {
             _logger.LogInformation("Getting GPT response");
-            var gptResponse = await GetGPTResponse(record);
+            var gptResponse = await GetDummyGPTResponse(records[i]);
             _logger.LogInformation("Sending back response to gateway: " + gptResponse);
             await responseStream.WriteAsync(new SummaryReply()
             {
+                Id = i,
                 Resolution = gptResponse,
                 Document = $"http://{gptResponse}.com"
             });
-            await Task.Delay(TimeSpan.FromSeconds(1));
+            counter++;
         }
 
         return null;
-
-
-
-        /*var element = new SummaryElement("2020: Ny garasje satt opp i henhold til forskrifter", "https://upload.wikimedia.org/wikipedia/commons/5/56/Donald_Trump_official_portrait.jpg");
-        return Task.FromResult(element);
-        await Task.Delay(1000);
-        
-        var element1 = new SummaryElement("2021: Satt opp utestue med vinduer og masse annet som jeg bare skriver her fordi dette er en test og jeg vil se hvordan et langt avsnitt ser ut", "https://www.lego.com/cdn/product-assets/product.bi.core.pdf/6482339.pdf");
-        await response.WriteAsync($"data: {JsonSerializer.Serialize(element1)}\n\n");
-        await Task.Delay(1000);
-        
-        var element2 = new SummaryElement("2020: Byttet ut UFOen som var parkert på taket med en ny elektrisk UFO som kan fly enda fortere men har litt kortere rekkevidde nettopp fordi den er elektrisk", "https://www.lego.com/cdn/product-assets/product.bi.core.pdf/6332509.pdf");
-        await response.WriteAsync($"data: {JsonSerializer.Serialize(element2)}\n\n");
-
-        await response.WriteAsync($"event: close\ndata: close\n\n");
-
-        return Task.FromResult(new SummaryReply
-        {
-
-        });
-
-        return Task.FromResult(new SummaryReply
-        {
-            Resolution = response.Value.Choices[0].Message.Content,
-            Document = "http://test.com"
-        });*/
     }
 }

@@ -12,13 +12,15 @@ service Summary {
 
 // The request message containing the user's name.
 message SummaryRequest {
-  int32 Gnr = 1;
-  int32 Bnr = 2;
-  int32 Snr = 3;
+  int32 StartId = 1;
+  int32 Gnr = 2;
+  int32 Bnr = 3;
+  int32 Snr = 4;
 }
 
 // The response message containing the greetings.
 message SummaryReply {
-  string Resolution = 1;
-  string Document = 2;
+  int32 Id = 1;
+  string Resolution = 2;
+  string Document = 3;
 }
