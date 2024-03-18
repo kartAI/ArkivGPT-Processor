@@ -1,6 +1,6 @@
 # Use the Microsoft .NET SDK image to build the project
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build-env
-WORKDIR /service
+WORKDIR /processor
 
 # Copy csproj and restore any dependencies (via NuGet)
 COPY ./ArkivGPT_Processor/*.csproj ./
