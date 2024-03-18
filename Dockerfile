@@ -8,6 +8,7 @@ RUN dotnet restore
 
 # Copy the project files and build our release
 COPY ./ArkivGPT_Processor/ ./
+
 RUN dotnet publish -c Release -o out
 
 # Generate runtime image
@@ -15,7 +16,7 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS dev-env
 WORKDIR /processor
 COPY --from=build-env /processor/out .
 COPY GPT.* ./..
-
+COPY GeoDoc.* ./..
 RUN dotnet dev-certs https --trust
 
 # Start the gRPC server
