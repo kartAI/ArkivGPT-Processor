@@ -86,7 +86,6 @@ public class SummaryService : Summary.SummaryBase
             var linkTokenSource = CancellationTokenSource.CreateLinkedTokenSource(timeoutToken, clientDisconnectToken);
             var reply = await client.SendOCRAsync(new OcrRequest { Filename = filename });
             
-            Console.WriteLine("Reply received from OCR: " + reply.Text);
             return reply.Text;
 
         }
@@ -113,6 +112,9 @@ public class SummaryService : Summary.SummaryBase
 
         // Download documents
         //var records = GetGeoDocRecords(request.Gnr, request.Bnr, request.Snr);
+
+        var text = await GetOCR(context, "file.pdf");
+        Console.WriteLine("TEXT RECEIVED FROM OCR: " + text);
 
         var records = new List<string>()
         {
