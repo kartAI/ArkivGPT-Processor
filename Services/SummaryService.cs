@@ -16,10 +16,12 @@ public class SummaryService : Summary.SummaryBase
 
     private readonly string _endPoint = File.ReadAllText("../GPT.endpoint");
     private readonly string _apiKey = File.ReadAllText("../GPT.key");
+    private GeoDocClient _client;
 
     public SummaryService(ILogger<SummaryService> logger)
     {
         _logger = logger;
+        _client = new GeoDocClient();
     }
 
     public async Task<String> GetGeoDocRecords(string gnr, string bnr, string snr)
@@ -112,7 +114,16 @@ public class SummaryService : Summary.SummaryBase
 
         // Download documents
         //var records = GetGeoDocRecords(request.Gnr, request.Bnr, request.Snr);
+        await _client.AuthenticateAsync();
+        var searchResult = await _client.SearchDocumentsAsyncVedtak(request.Gnr, request.Bnr);
+        
+        Console.WriteLine(searchResult);
 
+        await _client.DownloadVedtakDocument(searchResult);
+        
+        
+        
+        
         var text = await GetOCR(context, "file.pdf");
         Console.WriteLine("TEXT RECEIVED FROM OCR: " + text);
 

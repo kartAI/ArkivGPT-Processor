@@ -14,6 +14,7 @@ RUN dotnet publish -c Release -o out
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS dev-env
 WORKDIR /processor
 COPY --from=build-env /processor/out .
+COPY GeoDoc.* ./../
 COPY GPT.* ./../
 
 RUN dotnet dev-certs https --trust
