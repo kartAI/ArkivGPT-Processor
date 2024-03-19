@@ -107,20 +107,21 @@ public class SummaryService : Summary.SummaryBase
         // Download documents
         //var records = GetGeoDocRecords(request.Gnr, request.Bnr, request.Snr);
         await _client.AuthenticateAsync();
-        var searchResult = await _client.SearchDocumentsAsyncVedtak(request.Gnr, request.Bnr);
+        var searchResult = await _client.SearchDocumentsAsyncVedtak(request.Gnr, request.Bnr, request.Snr);
         
         Console.WriteLine(searchResult);
 
-        await _client.DownloadVedtakDocument(searchResult);        
+        await _client.DownloadVedtakDocument(searchResult, request.Gnr, request.Bnr, request.Snr);
         
         // Get text from document
         string folder = $"{request.Gnr}-{request.Bnr}-{request.Snr}/";
-        var files = Directory.GetFiles(folder);
+        string folderPath = $"/Files/{folder}"; 
+        var files = Directory.GetFiles(folderPath);
         for (int i = 0; i < files.Length; i++)
         {
             var file = files[i];
             _logger.LogInformation("Getting GPT response");
-            string gptResponse = await GetGPTResponse(await GetOCR(context, "Files/" + folder + file));
+            string gptResponse = await GetGPTResponse(await GetOCR(context, folderPath + file));
             _logger.LogInformation("Sending back response to gateway");
             await responseStream.WriteAsync(new SummaryReply()
             {

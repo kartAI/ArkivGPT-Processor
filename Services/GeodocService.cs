@@ -44,7 +44,7 @@ public class GeoDocClient
         }
     }
 
-    public async Task<List<dynamic>> SearchDocumentsAsyncVedtak(int gnr, int bnr)
+    public async Task<List<dynamic>> SearchDocumentsAsyncVedtak(int gnr, int bnr, int snr)
     {
         if (string.IsNullOrWhiteSpace(_bearerToken))
         {
@@ -54,13 +54,21 @@ public class GeoDocClient
         
         // Construct the URL for the API call. This URL queries the GeoDoc service for records 
         var searchUrl =
-            $"https://api.geodoc.no/v1/tenants/DemoProd6/records?$filter=seriesId in ('1099') and gid/any(x:x/gardsnummer eq {gnr} and x/bruksnummer eq {bnr})";
+            $"https://api.geodoc.no/v1/tenants/DemoProd6/records?$filter=seriesId in ('1099') and gid/any(x:x/gardsnummer eq {gnr} and x/bruksnummer eq {bnr} and x/seksjonsnummer eq {snr})";
+        
+        
+        
         var request = new HttpRequestMessage(HttpMethod.Get, searchUrl);
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _bearerToken);
 
-        Console.WriteLine($"Sending request to: {searchUrl}");
         var response = await _client.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+        
+        Console.WriteLine($"this is the respons: {response.Content}");
+        if (!response.IsSuccessStatusCode)
+        {
+            Console.WriteLine($"Request failed with status code: {response.StatusCode} and reason: {response.ReasonPhrase}");
+            return new List<dynamic>();
+        }
 
         var jsonRespons = await response.Content.ReadAsStringAsync();
 
@@ -107,7 +115,7 @@ public class GeoDocClient
         return vedtakDocuments;
     }
 
-    public async Task DownloadVedtakDocument(List<dynamic> vedtakDocuments)
+    public async Task DownloadVedtakDocument(List<dynamic> vedtakDocuments, int gnr, int bnr, int snr)
     {
         foreach (var doc in vedtakDocuments)
         {
@@ -157,15 +165,17 @@ public class GeoDocClient
             {
                 Console.WriteLine($"This is the downloadUri: {downloadUri}");
             }
-
+            
+            // Download document if if it finds a downloadURI
             if (!string.IsNullOrEmpty(downloadUri))
             {
                 Console.WriteLine($"Download URI received for document ID: {documentId}. Proceeding with download...");
-                string targetDirectory = "/processor/Files";
+                string targetDirectory = $"/processor/Files/{gnr}-{bnr}-{snr}";
+                Console.WriteLine($"Download directory has been created {targetDirectory}");
                 Directory.CreateDirectory(targetDirectory);
 
                 string filePath = Path.Combine(targetDirectory, $"{documentId}.pdf");
-                await DownloadFile(downloadUri, filePath);
+                await DownloadFile(downloadUri, filePath, documentId);
 
                 Console.WriteLine($"Download completed for document ID: {documentId}");
             }
@@ -227,7 +237,7 @@ public class GeoDocClient
         return downloadUri;
     }
 
-    private async Task DownloadFile(string url, string filePath)
+    private async Task DownloadFile(string url, string filePath, string documentId)
     {
         if (File.Exists(filePath))
         {
@@ -239,7 +249,8 @@ public class GeoDocClient
         try
         {
             response = await _client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
-        
+            
+            //check statuscode
             if (response.StatusCode == HttpStatusCode.NotFound)
             {
                 Console.WriteLine($"The file at {url} was not found (404). Skipping download.");
