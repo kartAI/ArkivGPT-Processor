@@ -103,14 +103,6 @@ public class SummaryService : Summary.SummaryBase
     public override async Task<SummaryReply> SaySummary(
         SummaryRequest request, IServerStreamWriter<SummaryReply> responseStream, ServerCallContext context)
     {
-        // Get text from document
-        /*string folder = "./Files/2-2/";
-        var files = Directory.GetFiles(folder);
-        foreach (var file in files)
-        {
-            var text = GetOCR(context, folder + file);
-            Console.WriteLine("TEXT RECEIVED FROM OCR: " + text);
-        }*/
 
         // Download documents
         //var records = GetGeoDocRecords(request.Gnr, request.Bnr, request.Snr);
@@ -119,37 +111,25 @@ public class SummaryService : Summary.SummaryBase
         
         Console.WriteLine(searchResult);
 
-        await _client.DownloadVedtakDocument(searchResult);
+        await _client.DownloadVedtakDocument(searchResult);        
         
-        
-        
-        
-        var text = await GetOCR(context, "file.pdf");
-        Console.WriteLine("TEXT RECEIVED FROM OCR: " + text);
-
-        var records = new List<string>()
+        // Get text from document
+        string folder = $"{request.Gnr}-{request.Bnr}-{request.Snr}/";
+        var files = Directory.GetFiles(folder);
+        for (int i = 0; i < files.Length; i++)
         {
-            "String 1",
-            "String 2",
-            "String 3"
-        };
-
-        var counter = 0;
-
-        for (var i = request.StartId; i < records.Count; i++)
-        {
+            var file = files[i];
             _logger.LogInformation("Getting GPT response");
-            var gptResponse = await GetDummyGPTResponse(records[i]);
-            _logger.LogInformation("Sending back response to gateway: " + gptResponse);
+            string gptResponse = await GetGPTResponse(await GetOCR(context, "Files/" + folder + file));
+            _logger.LogInformation("Sending back response to gateway");
             await responseStream.WriteAsync(new SummaryReply()
             {
                 Id = i,
                 Resolution = gptResponse,
-                Document = $"http://{gptResponse}.com"
+                Document = $"http://localhost/api/document?document={folder}/{file}"
             });
-            counter++;
+            _logger.LogInformation("Recived response from OCR");
         }
-
         return null;
     }
 }
