@@ -103,29 +103,30 @@ public class SummaryService : Summary.SummaryBase
     public override async Task<SummaryReply> SaySummary(
         SummaryRequest request, IServerStreamWriter<SummaryReply> responseStream, ServerCallContext context)
     {
-        // Get text from document
-        /*string folder = "./Files/2-2/";
+        //Get text from document
+        string folder = "./Files/";
         var files = Directory.GetFiles(folder);
+        Console.WriteLine($"This is how many files that were found: {files.Length}");
         foreach (var file in files)
         {
             var text = GetOCR(context, folder + file);
-            Console.WriteLine("TEXT RECEIVED FROM OCR: " + text);
-        }*/
+            Console.WriteLine("TEXT RECEIVED FROM OCR: " + text.Result);
+        }
 
         // Download documents
         //var records = GetGeoDocRecords(request.Gnr, request.Bnr, request.Snr);
         await _client.AuthenticateAsync();
-        var searchResult = await _client.SearchDocumentsAsyncVedtak(request.Gnr, request.Bnr);
+        var searchResult = await _client.SearchDocumentsAsyncVedtak(request.Gnr, request.Bnr, request.Snr);
         
         Console.WriteLine(searchResult);
 
-        await _client.DownloadVedtakDocument(searchResult);
+        await _client.DownloadVedtakDocument(searchResult, request.Gnr, request.Bnr, request.Snr);
         
         
         
         
-        var text = await GetOCR(context, "file.pdf");
-        Console.WriteLine("TEXT RECEIVED FROM OCR: " + text);
+        //var text = await GetOCR(context, "file.pdf");
+        //Console.WriteLine("TEXT RECEIVED FROM OCR: " + text);
 
         var records = new List<string>()
         {
