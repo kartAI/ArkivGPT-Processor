@@ -120,6 +120,10 @@ public class SummaryService : Summary.SummaryBase
         for (int i = 0; i < files.Length; i++)
         {
             var file = files[i];
+            if (file.EndsWith(".png"))
+            {
+                continue;
+            }
             _logger.LogInformation("Getting GPT response");
             string gptResponse = await GetGPTResponse(await GetOCR(context, file));
             _logger.LogInformation("Sending back response to gateway");
@@ -127,7 +131,7 @@ public class SummaryService : Summary.SummaryBase
             {
                 Id = i,
                 Resolution = gptResponse,
-                Document = $"http://localhost/api/document?document={folder}/{file}"
+                Document = $"http://localhost/api/document?document={file}"
             });
             _logger.LogInformation("Recived response from OCR");
         }
