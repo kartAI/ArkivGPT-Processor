@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+option csharp_namespace = "ArkivGPT_Processor";
+
+package ocr;
+
+// The greeting service definition.
+service Ocr {
+  // Sends a greeting
+  rpc SendOCR (OcrRequest) returns (OcrReply);
+}
+
+message OcrRequest {
+  string Filename = 1;
+}
+
+message OcrReply {
+  string Text = 1;
+}
