@@ -115,13 +115,13 @@ public class SummaryService : Summary.SummaryBase
         
         // Get text from document
         string folder = $"{request.Gnr}-{request.Bnr}-{request.Snr}/";
-        string folderPath = $"/Files/{folder}"; 
+        string folderPath = $"Files/{folder}"; 
         var files = Directory.GetFiles(folderPath);
         for (int i = 0; i < files.Length; i++)
         {
             var file = files[i];
             _logger.LogInformation("Getting GPT response");
-            string gptResponse = await GetGPTResponse(await GetOCR(context, folderPath + file));
+            string gptResponse = await GetGPTResponse(await GetOCR(context, file));
             _logger.LogInformation("Sending back response to gateway");
             await responseStream.WriteAsync(new SummaryReply()
             {
