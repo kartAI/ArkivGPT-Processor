@@ -47,7 +47,7 @@ public class SummaryService : Summary.SummaryBase
             DeploymentName = "AI-gutta-pdf-summarizing",
             Messages =
             {
-                new ChatRequestSystemMessage("You are an AI assistant that summarizes PDFs. Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved, do not include the location. You are to summarize the PDF in less than 15 words on norwegian, but try to keep as much information as you can. Start with the year, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
+                new ChatRequestSystemMessage("You are an AI assistant that summarizes PDFs. Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved, do not include the location. You are to summarize the PDF in less than 15 words on norwegian, but try to keep as much information as you can. Start with the year always, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
                 //new ChatRequestSystemMessage("Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved, do not include the location."),
                 //new ChatRequestSystemMessage("You are to summarize the PDF in less than 15 words on norwegian. Start with the year, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
                 new ChatRequestUserMessage(message)
@@ -111,7 +111,7 @@ public class SummaryService : Summary.SummaryBase
         
         Console.WriteLine(searchResult);
 
-        await _client.DownloadVedtakDocument(searchResult, request.Gnr, request.Bnr, request.Snr);
+        await _client.DownloadVedtakDocumentsAsync(searchResult, request.Gnr, request.Bnr, request.Snr);
         
         // Get text from document
         string folder = $"{request.Gnr}-{request.Bnr}-{request.Snr}/";

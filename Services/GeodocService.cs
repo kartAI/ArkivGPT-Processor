@@ -114,84 +114,97 @@ public class GeoDocClient
 
         return vedtakDocuments;
     }
-
-    public async Task DownloadVedtakDocument(List<dynamic> vedtakDocuments, int gnr, int bnr, int snr)
+    public async Task DownloadVedtakDocumentsAsync(List<dynamic> vedtakDocuments, int gnr, int bnr, int snr)
     {
+        var downloadTasks = new List<Task>();
         foreach (var doc in vedtakDocuments)
         {
-            string documentId = doc.id.ToString();
-            Console.WriteLine($"Initializing download for document ID: {documentId}");
-            string initialUrl = $"https://api.geodoc.no/v1/tenants/DemoProd6/records/{documentId}/download";
+            // This now starts the task and immediately continues to the next iteration
+            var task = DownloadVedtakDocument(doc, gnr, bnr, snr);
+            downloadTasks.Add(task);
+        }
 
-            // Fetch containerName and blobName
-            var initRequest = new HttpRequestMessage(HttpMethod.Get, initialUrl);
-            initRequest.Headers.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _bearerToken);
-            
-            var initResponse = await _client.SendAsync(initRequest);
+        // Process tasks as they complete
+        while (downloadTasks.Any())
+        {
+            var completedTask = await Task.WhenAny(downloadTasks);
+            downloadTasks.Remove(completedTask);
+            // Optionally handle result or exception of completedTask here
+        }
+    }
+    public async Task DownloadVedtakDocument(dynamic vedtakDocuments, int gnr, int bnr, int snr)
+    {
+        string documentId = vedtakDocuments.id.ToString();
+        Console.WriteLine($"Initializing download for document ID: {documentId}");
+        string initialUrl = $"https://api.geodoc.no/v1/tenants/DemoProd6/records/{documentId}/download";
 
-            if (initResponse.StatusCode == HttpStatusCode.NotFound)
-            {
-                Console.WriteLine( $"Document ID : {documentId} not found. Skipping");
-                continue;
-            }
-            else if (!initResponse.IsSuccessStatusCode)
-            {
-                Console.WriteLine($"Failed to initiate download for Document ID: {documentId}. Status Code: {initResponse.StatusCode}");
-                continue; 
+        // Fetch containerName and blobName
+        var initRequest = new HttpRequestMessage(HttpMethod.Get, initialUrl);
+        initRequest.Headers.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _bearerToken);
+        
+        var initResponse = await _client.SendAsync(initRequest);
 
-            }
+        if (initResponse.StatusCode == HttpStatusCode.NotFound)
+        {
+            Console.WriteLine( $"Document ID : {documentId} not found. Skipping");
+            return;
+        }
+        else if (!initResponse.IsSuccessStatusCode)
+        {
+            Console.WriteLine($"Failed to initiate download for Document ID: {documentId}. Status Code: {initResponse.StatusCode}");
+            return; 
+        }
 
-            var initResponseBody = await initResponse.Content.ReadAsStringAsync();
-            var initResult = JsonConvert.DeserializeObject<dynamic>(initResponseBody);
+        var initResponseBody = await initResponse.Content.ReadAsStringAsync();
+        var initResult = JsonConvert.DeserializeObject<dynamic>(initResponseBody);
 
 
-            string containerName = initResult.containerName;
-            string blobName = initResult.blobName;
-            
-            // Poll for status
-            string statusUrl =
-                $"https://api.geodoc.no/v1/tenants/DemoProd6/records/download/status/{containerName}/{blobName}";
-            
-            // log polling
-            Console.WriteLine($"Polling for status of document ID: {documentId}");
-            string downloadUri = await PollForStatusAndGetUri(statusUrl);
+        string containerName = initResult.containerName;
+        string blobName = initResult.blobName;
+        
+        // Poll for status
+        string statusUrl =
+            $"https://api.geodoc.no/v1/tenants/DemoProd6/records/download/status/{containerName}/{blobName}";
+        
+        // log polling
+        Console.WriteLine($"Polling for status of document ID: {documentId}");
+        string downloadUri = await PollForStatusAndGetUri(statusUrl);
 
-            if (downloadUri == null)
-            {
-                Console.WriteLine("No uri fetched");
-            }
-            else
-            {
-                Console.WriteLine($"This is the downloadUri: {downloadUri}");
-            }
-            
-            // Download document if if it finds a downloadURI
-            if (!string.IsNullOrEmpty(downloadUri))
-            {
-                Console.WriteLine($"Download URI received for document ID: {documentId}. Proceeding with download...");
-                string targetDirectory = $"/processor/Files/{gnr}-{bnr}-{snr}";
-                Console.WriteLine($"Download directory has been created {targetDirectory}");
-                Directory.CreateDirectory(targetDirectory);
+        if (downloadUri == null)
+        {
+            Console.WriteLine("No uri fetched");
+        }
+        else
+        {
+            Console.WriteLine($"This is the downloadUri: {downloadUri}");
+        }
+        
+        // Download document if if it finds a downloadURI
+        if (!string.IsNullOrEmpty(downloadUri))
+        {
+            Console.WriteLine($"Download URI received for document ID: {documentId}. Proceeding with download...");
+            string targetDirectory = $"/processor/Files/{gnr}-{bnr}-{snr}";
+            Console.WriteLine($"Download directory has been created {targetDirectory}");
+            Directory.CreateDirectory(targetDirectory);
 
-                string filePath = Path.Combine(targetDirectory, $"{documentId}.pdf");
-                await DownloadFile(downloadUri, filePath, documentId);
+            string filePath = Path.Combine(targetDirectory, $"{documentId}.pdf");
+            await DownloadFile(downloadUri, filePath, documentId);
 
-                Console.WriteLine($"Download completed for document ID: {documentId}");
-            }
-            else
-            {
-                Console.WriteLine($"Failed to obtain download URI for document ID: {documentId}.");
-            }
+            Console.WriteLine($"Download completed for document ID: {documentId}");
+        }
+        else
+        {
+            Console.WriteLine($"Failed to obtain download URI for document ID: {documentId}.");
         }
     }
 
     private async Task<string> PollForStatusAndGetUri(string statusUrl)
     {
         string downloadUri = null;
-        int maxAttempts = 5;
+        int maxAttempts = 10;
         int attempt = 0;
-        int pollInterval = 5000; 
+        int pollInterval = 1000; 
 
         while (attempt < maxAttempts && downloadUri == null)
         {
