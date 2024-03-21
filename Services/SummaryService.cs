@@ -100,6 +100,20 @@ public class SummaryService : Summary.SummaryBase
     }
 
 
+    private async Task ProcessFileAsync(int fileId, string file, ServerCallContext context, IServerStreamWriter<SummaryReply> responseStream)
+    {
+        _logger.LogInformation("Getting GPT response");
+        string gptResponse = await GetGPTResponse(await GetOCR(context, file));
+        _logger.LogInformation("Sending back response to gateway");
+        await responseStream.WriteAsync(new SummaryReply()
+        {
+            Id = fileId,
+            Resolution = gptResponse,
+            Document = $"http://localhost/api/document?document={file}"
+        });
+        _logger.LogInformation("Recived response from OCR");
+    }
+
     public override async Task<SummaryReply> SaySummary(
         SummaryRequest request, IServerStreamWriter<SummaryReply> responseStream, ServerCallContext context)
     {
@@ -114,9 +128,10 @@ public class SummaryService : Summary.SummaryBase
         await _client.DownloadVedtakDocumentsAsync(searchResult, request.Gnr, request.Bnr, request.Snr);
         
         // Get text from document
-        string folder = $"{request.Gnr}-{request.Bnr}-{request.Snr}/";
-        string folderPath = $"Files/{folder}"; 
-        var files = Directory.GetFiles(folderPath);
+        string folder = $"Files/{request.Gnr}-{request.Bnr}-{request.Snr}/";
+        var files = Directory.GetFiles(folder);
+
+        var processingTasks = new List<Task>();
         for (int i = 0; i < files.Length; i++)
         {
             var file = files[i];
@@ -124,17 +139,11 @@ public class SummaryService : Summary.SummaryBase
             {
                 continue;
             }
-            _logger.LogInformation("Getting GPT response");
-            string gptResponse = await GetGPTResponse(await GetOCR(context, file));
-            _logger.LogInformation("Sending back response to gateway");
-            await responseStream.WriteAsync(new SummaryReply()
-            {
-                Id = i,
-                Resolution = gptResponse,
-                Document = $"http://localhost/api/document?document={file}"
-            });
-            _logger.LogInformation("Recived response from OCR");
+            var task = ProcessFileAsync(i, file, context, responseStream);
+            processingTasks.Add(task);
         }
+        await Task.WhenAll(processingTasks);
+
         return null;
     }
 }
