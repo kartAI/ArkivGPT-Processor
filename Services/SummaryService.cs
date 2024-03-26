@@ -124,6 +124,10 @@ public class SummaryService : Summary.SummaryBase
         var searchResult = await _client.SearchDocumentsAsyncVedtak(request.Gnr, request.Bnr, request.Snr);
         
         Console.WriteLine(searchResult);
+        if (searchResult.Count == 0)
+        {
+            return null;
+        }
 
         await _client.DownloadVedtakDocumentsAsync(searchResult, request.Gnr, request.Bnr, request.Snr);
         
