@@ -41,27 +41,31 @@ public class SummaryService : Summary.SummaryBase
     public async Task<string> GetGPTResponse(string message)
     {
         OpenAIClient client = new(new Uri(_endPoint), new AzureKeyCredential(_apiKey));
-
-        var chatCompletionsOptions = new ChatCompletionsOptions()
+        var text = "";
+        try
         {
-            DeploymentName = "AI-gutta-pdf-summarizing",
-            Messages =
+            var chatCompletionsOptions = new ChatCompletionsOptions()
             {
-                new ChatRequestSystemMessage("You are an AI assistant that summarizes PDFs. Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved, do not include the location. You are to summarize the PDF in less than 15 words on norwegian, but try to keep as much information as you can. Start with the year always, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
-                //new ChatRequestSystemMessage("Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved, do not include the location."),
-                //new ChatRequestSystemMessage("You are to summarize the PDF in less than 15 words on norwegian. Start with the year, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
-                new ChatRequestUserMessage(message)
-            },
-            MaxTokens = 100
-        };
+                DeploymentName = "AI-gutta-pdf-summarizing",
+                Messages =
+                {
+                    new ChatRequestSystemMessage("You are an AI assistant that summarizes PDFs. Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved, do not include the location. You are to summarize the PDF in less than 15 words on norwegian, but try to keep as much information as you can. Start with the year always, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
+                    //new ChatRequestSystemMessage("Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved, do not include the location."),
+                    //new ChatRequestSystemMessage("You are to summarize the PDF in less than 15 words on norwegian. Start with the year, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
+                    new ChatRequestUserMessage(message)
+                },
+                MaxTokens = 100
+            };
 
-        Response<ChatCompletions> response = client.GetChatCompletions(chatCompletionsOptions);
+            Response<ChatCompletions> response = client.GetChatCompletions(chatCompletionsOptions);
 
-        var text = response.Value.Choices[0].Message.Content;
+            text = response.Value.Choices[0].Message.Content;
 
-        Console.WriteLine(text);
-
-        Console.WriteLine();
+            Console.WriteLine(text);
+        } catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
 
         return text;
     }
@@ -71,52 +75,54 @@ public class SummaryService : Summary.SummaryBase
         return message;
     }
 
-    public async Task<string> GetOCR(ServerCallContext context, string filename)
-    {
-        _logger.LogInformation("Creating new route to processor");
-        // Use this to send the data were it is supposed to go
-        var serverAddress = Environment.GetEnvironmentVariable("GRPC_SERVER_ADDRESS") ?? "http://localhost:5001"; // To handel docker and local
-        using var channel = GrpcChannel.ForAddress(serverAddress);
-        var client = new Ocr.OcrClient(channel);
-        
+    public async Task<string> GetOCR(ServerCallContext context, string filename, Ocr.OcrClient client)
+    {        
         _logger.LogInformation("Getting reply from ocr");
 
+        var timeoutToken = new CancellationTokenSource(TimeSpan.FromSeconds(120)).Token;
+        var clientDisconnectToken = context.CancellationToken;
+        var linkTokenSource = CancellationTokenSource.CreateLinkedTokenSource(timeoutToken, clientDisconnectToken);
+        
         try
         {
-            var timeoutToken = new CancellationTokenSource(TimeSpan.FromSeconds(60)).Token;
-            var clientDisconnectToken = context.CancellationToken;
-            var linkTokenSource = CancellationTokenSource.CreateLinkedTokenSource(timeoutToken, clientDisconnectToken);
-            var reply = await client.SendOCRAsync(new OcrRequest { Filename = filename });
+            var reply = await client.SendOCRAsync(new OcrRequest { Filename = filename }, cancellationToken: linkTokenSource.Token);
             
             return reply.Text;
 
         }
         catch (RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.Cancelled)
         {
-            Console.WriteLine("Stream cancelled.");
+            Console.WriteLine("OCR stream cancelled.");
         }
         
         return null;
     }
 
 
-    private async Task ProcessFileAsync(int fileId, string file, ServerCallContext context, IServerStreamWriter<SummaryReply> responseStream)
+    private async Task ProcessFileAsync(int fileId, string file, ServerCallContext context, IServerStreamWriter<SummaryReply> responseStream, Ocr.OcrClient client, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Getting GPT response");
-        string gptResponse = await GetGPTResponse(await GetOCR(context, file));
+        string ocrText = await GetOCR(context, file, client);
+        string gptResponse = await GetGPTResponse(ocrText);
+
         _logger.LogInformation("Sending back response to gateway");
         await responseStream.WriteAsync(new SummaryReply()
         {
             Id = fileId,
             Resolution = gptResponse,
             Document = $"http://localhost/api/document?document={file}"
-        });
+        }, cancellationToken);
         _logger.LogInformation("Recived response from OCR");
     }
 
     public override async Task<SummaryReply> SaySummary(
         SummaryRequest request, IServerStreamWriter<SummaryReply> responseStream, ServerCallContext context)
     {
+        var cancellationToken = context.CancellationToken;
+        //_logger.LogInformation("Creating new route to OCR");
+        var serverAddress = Environment.GetEnvironmentVariable("GRPC_SERVER_ADDRESS");
+        using var channel = GrpcChannel.ForAddress(serverAddress);
+        var client = new Ocr.OcrClient(channel);
 
         // Download documents
         //var records = GetGeoDocRecords(request.Gnr, request.Bnr, request.Snr);
@@ -135,18 +141,13 @@ public class SummaryService : Summary.SummaryBase
         string folder = $"Files/{request.Gnr}-{request.Bnr}-{request.Snr}/";
         var files = Directory.GetFiles(folder);
 
-        var processingTasks = new List<Task>();
-        for (int i = 0; i < files.Length; i++)
+        try
         {
-            var file = files[i];
-            if (file.EndsWith(".png"))
-            {
-                continue;
-            }
-            var task = ProcessFileAsync(i, file, context, responseStream);
-            processingTasks.Add(task);
+            var processingTasks = files.Select(file => ProcessFileAsync(Array.IndexOf(files, file), file, context, responseStream, client, cancellationToken)).ToList();
+            await Task.WhenAll(processingTasks);
+        } catch {
+            Console.WriteLine("Error processing files");
         }
-        await Task.WhenAll(processingTasks);
 
         return null;
     }

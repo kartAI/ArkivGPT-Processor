@@ -134,13 +134,22 @@ public class GeoDocClient
     }
     public async Task DownloadVedtakDocument(dynamic vedtakDocuments, int gnr, int bnr, int snr)
     {
+        string targetDirectory = $"/processor/Files/{gnr}-{bnr}-{snr}";
         string documentId = vedtakDocuments.id.ToString();
-        Console.WriteLine($"Initializing download for document ID: {documentId}");
+        string filePath = Path.Combine(targetDirectory, $"{documentId}.pdf");
+
+        if (File.Exists(filePath))
+        {
+            Console.WriteLine($"File already exists at {filePath}. Skipping download.");
+            return;
+        }
+
         string initialUrl = $"https://api.geodoc.no/v1/tenants/DemoProd6/records/{documentId}/download";
+        Console.WriteLine($"Initializing download for document ID: {documentId}");
 
         // Fetch containerName and blobName
         var initRequest = new HttpRequestMessage(HttpMethod.Get, initialUrl);
-        initRequest.Headers.Authorization =
+        initRequest.Headers.Authorization = 
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _bearerToken);
         
         var initResponse = await _client.SendAsync(initRequest);
@@ -173,42 +182,30 @@ public class GeoDocClient
 
         if (downloadUri == null)
         {
-            Console.WriteLine("No uri fetched");
-        }
-        else
-        {
-            Console.WriteLine($"This is the downloadUri: {downloadUri}");
+            Console.WriteLine($"Failed to obtain download URI for document ID: {documentId}.");
+            return;
         }
         
+        Console.WriteLine($"This is the downloadUri: {downloadUri}");
+        
         // Download document if if it finds a downloadURI
-        if (!string.IsNullOrEmpty(downloadUri))
-        {
-            Console.WriteLine($"Download URI received for document ID: {documentId}. Proceeding with download...");
-            string targetDirectory = $"/processor/Files/{gnr}-{bnr}-{snr}";
-            Console.WriteLine($"Download directory has been created {targetDirectory}");
-            Directory.CreateDirectory(targetDirectory);
+        Console.WriteLine($"Download URI received for document ID: {documentId}. Proceeding with download...");
+        Console.WriteLine($"Download directory has been created {targetDirectory}");
+        Directory.CreateDirectory(targetDirectory);
 
-            string filePath = Path.Combine(targetDirectory, $"{documentId}.pdf");
-            await DownloadFile(downloadUri, filePath, documentId);
+        await DownloadFile(downloadUri, filePath, documentId);
 
-            Console.WriteLine($"Download completed for document ID: {documentId}");
-        }
-        else
-        {
-            Console.WriteLine($"Failed to obtain download URI for document ID: {documentId}.");
-        }
+        Console.WriteLine($"Download completed for document ID: {documentId}");
     }
 
     private async Task<string> PollForStatusAndGetUri(string statusUrl)
     {
         string downloadUri = null;
         int maxAttempts = 10;
-        int attempt = 0;
-        int pollInterval = 1000; 
+        int pollInterval = 1000; // 1 second
 
-        while (attempt < maxAttempts && downloadUri == null)
+        for (int attempts = 0; attempts < maxAttempts; attempts++)
         {
-            attempt++;
             var statusRequest = new HttpRequestMessage(HttpMethod.Get, statusUrl);
             statusRequest.Headers.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _bearerToken);
@@ -228,23 +225,23 @@ public class GeoDocClient
             if (statusResult.status == "Pending")
             {
                 Console.WriteLine($"Document status is 'Pending'. Waiting for {pollInterval / 1000} seconds before retrying.");
-                await Task.Delay(pollInterval); // Wait before polling again
             }
             else if (statusResult.status == "Accepted")
             {
                 Console.WriteLine($"Document processing is 'Accepted'. Waiting for {pollInterval / 1000} seconds before retrying.");
-                await Task.Delay(pollInterval); // Specific handling for 'Accepted', similar to 'Pending'
             }
             else if (statusResult.status == "Success")
             {
                 downloadUri = statusResult.uri;
                 Console.WriteLine("Document is ready for download.");
+                break; // Exit the loop if the document is ready for download
             }
             else
             {
                 Console.WriteLine($"Document status is '{statusResult.status}'. Unable to download.");
-                break; // Exit if status is neither 'Pending', 'Accepted', nor 'Success'
+                break; // Exit the loop if the status is unexpected
             }
+            await Task.Delay(pollInterval); // Wait before polling again
         }
 
         return downloadUri;
@@ -252,12 +249,6 @@ public class GeoDocClient
 
     private async Task DownloadFile(string url, string filePath, string documentId)
     {
-        if (File.Exists(filePath))
-        {
-            Console.WriteLine($"File already exists at {filePath}. Skipping download.");
-            return;
-        }
-
         HttpResponseMessage response = null;
         try
         {
