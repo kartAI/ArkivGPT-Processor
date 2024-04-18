@@ -103,6 +103,13 @@ public class SummaryService : Summary.SummaryBase
     {
         _logger.LogInformation("Getting GPT response");
         string ocrText = await GetOCR(context, file, client);
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            Console.WriteLine("Process cancelled before sending to GPT");
+            return;
+        }
+        
         string gptResponse = await GetGPTResponse(ocrText);
 
         _logger.LogInformation("Sending back response to gateway");
