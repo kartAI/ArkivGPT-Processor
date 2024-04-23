@@ -7,6 +7,8 @@ using Azure.AI.OpenAI;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.AspNetCore.WebUtilities;
+using Polly;
+using Polly.CircuitBreaker;
 
 namespace ArkivGPT_Processor.Services;
 
@@ -17,11 +19,25 @@ public class SummaryService : Summary.SummaryBase
     private readonly string _endPoint = File.ReadAllText("../GPT.endpoint");
     private readonly string _apiKey = File.ReadAllText("../GPT.key");
     private GeoDocClient _client;
+    private AsyncCircuitBreakerPolicy _circuitBreakerPolicy;
 
     public SummaryService(ILogger<SummaryService> logger)
     {
         _logger = logger;
         _client = new GeoDocClient();
+        _circuitBreakerPolicy = Policy
+            .Handle<RpcException>()
+            .AdvancedCircuitBreakerAsync(
+                failureThreshold: 0.5,  // 50% actions must fail to break circuit
+                samplingDuration: TimeSpan.FromMinutes(2),  // Measure failures over 2 minutes
+                minimumThroughput: 7,  // At least 7 actions in 2 minutes to consider breaking
+                durationOfBreak: TimeSpan.FromMinutes(2),
+                onBreak: (ex, breakDelay) =>
+                {
+                    _logger.LogError($"Advanced Circuit broken: {ex.Message}");
+                },
+                onReset: () => _logger.LogInformation("Advanced Circuit reset.")
+            );
     }
 
     public async Task<String> GetGeoDocRecords(string gnr, string bnr, string snr)
@@ -85,7 +101,9 @@ public class SummaryService : Summary.SummaryBase
         
         try
         {
-            var reply = await client.SendOCRAsync(new OcrRequest { Filename = filename }, cancellationToken: linkTokenSource.Token);
+            var reply = await _circuitBreakerPolicy.ExecuteAsync( async () => 
+                await client.SendOCRAsync(new OcrRequest { Filename = filename }, cancellationToken: linkTokenSource.Token)
+            );
             
             return reply.Text;
 
@@ -93,9 +111,13 @@ public class SummaryService : Summary.SummaryBase
         catch (RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.Cancelled)
         {
             Console.WriteLine("OCR stream cancelled.");
+            return null;
         }
-        
-        return null;
+        catch (BrokenCircuitException ex)
+        {
+            _logger.LogError($"OCR request failed due to broken circuit: {ex.Message}");
+            return "Circuit Breaker is open. Retrying later might succeed.";
+        }
     }
 
 
