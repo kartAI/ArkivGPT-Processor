@@ -7,6 +7,8 @@ using Azure.AI.OpenAI;
 using Grpc.Core;
 using Grpc.Net.Client;
 using Microsoft.AspNetCore.WebUtilities;
+using ArkivGPT_Processor.Controllers;
+using ArkivGPT_Processor.Interfaces;
 using Polly;
 using Polly.CircuitBreaker;
 
@@ -18,13 +20,16 @@ public class SummaryService : Summary.SummaryBase
 
     private readonly string _endPoint = File.ReadAllText("../GPT.endpoint");
     private readonly string _apiKey = File.ReadAllText("../GPT.key");
-    private GeoDocClient _client;
-    private AsyncCircuitBreakerPolicy _circuitBreakerPolicy;
 
+    private readonly IAIController _aiController;
+    private readonly IOCRController _ocrController;
+    private readonly IArchiveController _archiveController;
+    private readonly string _serverAddress = Environment.GetEnvironmentVariable("GRPC_SERVER_ADDRESS");
+    
+    private AsyncCircuitBreakerPolicy _circuitBreakerPolicy;
+    
     public SummaryService(ILogger<SummaryService> logger)
     {
-        _logger = logger;
-        _client = new GeoDocClient();
         _circuitBreakerPolicy = Policy
             .Handle<RpcException>()
             .AdvancedCircuitBreakerAsync(
@@ -38,101 +43,27 @@ public class SummaryService : Summary.SummaryBase
                 },
                 onReset: () => _logger.LogInformation("Advanced Circuit reset.")
             );
-    }
-
-    public async Task<String> GetGeoDocRecords(string gnr, string bnr, string snr)
-    {
-        HttpClient geoDoc = new()
-        {
-            BaseAddress = new Uri("https://api.geodoc.no")
-        };
-
-        using HttpResponseMessage response = await geoDoc.GetAsync("/v1/tenants/{tenant}/records");
-
-        response.EnsureSuccessStatusCode();
-
-        return await response.Content.ReadAsStringAsync();
-    }
-
-    public async Task<string> GetGPTResponse(string message)
-    {
-        OpenAIClient client = new(new Uri(_endPoint), new AzureKeyCredential(_apiKey));
-        var text = "";
-        try
-        {
-            var chatCompletionsOptions = new ChatCompletionsOptions()
-            {
-                DeploymentName = "AI-gutta-pdf-summarizing",
-                Messages =
-                {
-                    new ChatRequestSystemMessage("You are an AI assistant that summarizes PDFs. Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved, do not include the location. You are to summarize the PDF in less than 15 words on norwegian, but try to keep as much information as you can. Start with the year always, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
-                    //new ChatRequestSystemMessage("Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved, do not include the location."),
-                    //new ChatRequestSystemMessage("You are to summarize the PDF in less than 15 words on norwegian. Start with the year, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
-                    new ChatRequestUserMessage(message)
-                },
-                MaxTokens = 100
-            };
-
-            Response<ChatCompletions> response = client.GetChatCompletions(chatCompletionsOptions);
-
-            text = response.Value.Choices[0].Message.Content;
-
-            Console.WriteLine(text);
-        } catch (Exception e)
-        {
-            Console.WriteLine(e.Message);
-        }
-
-        return text;
-    }
-
-    public async Task<string> GetDummyGPTResponse(string message)
-    {
-        return message;
-    }
-
-    public async Task<string> GetOCR(ServerCallContext context, string filename, Ocr.OcrClient client)
-    {        
-        _logger.LogInformation("Getting reply from ocr");
-
-        var timeoutToken = new CancellationTokenSource(TimeSpan.FromSeconds(120)).Token;
-        var clientDisconnectToken = context.CancellationToken;
-        var linkTokenSource = CancellationTokenSource.CreateLinkedTokenSource(timeoutToken, clientDisconnectToken);
         
-        try
-        {
-            var reply = await _circuitBreakerPolicy.ExecuteAsync( async () => 
-                await client.SendOCRAsync(new OcrRequest { Filename = filename }, cancellationToken: linkTokenSource.Token)
-            );
-            
-            return reply.Text;
-
-        }
-        catch (RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.Cancelled)
-        {
-            Console.WriteLine("OCR stream cancelled.");
-            return null;
-        }
-        catch (BrokenCircuitException ex)
-        {
-            _logger.LogError($"OCR request failed due to broken circuit: {ex.Message}");
-            return "Circuit Breaker is open. Retrying later might succeed.";
-        }
+        _logger = logger;
+        _archiveController = new GeodocController();
+        _aiController = new AIController(_endPoint, _apiKey);
+        _ocrController = new OCRController(_circuitBreakerPolicy);
     }
 
 
     private async Task ProcessFileAsync(int fileId, string file, ServerCallContext context, IServerStreamWriter<SummaryReply> responseStream, Ocr.OcrClient client, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Getting GPT response");
-        string ocrText = await GetOCR(context, file, client);
+        
+        string ocrText = await _ocrController.GetOCR(context, file, client);
 
         if (cancellationToken.IsCancellationRequested)
         {
-            Console.WriteLine("Process cancelled before sending to GPT");
+            _logger.LogDebug("Process cancelled before sending to GPT");
             return;
         }
         
-        string gptResponse = await GetGPTResponse(ocrText);
+        string gptResponse = await _aiController.GetAIResponse(ocrText);
 
         _logger.LogInformation("Sending back response to gateway");
         await responseStream.WriteAsync(new SummaryReply()
@@ -143,39 +74,36 @@ public class SummaryService : Summary.SummaryBase
         }, cancellationToken);
         _logger.LogInformation("Recived response from OCR");
     }
+    
 
     public override async Task<SummaryReply> SaySummary(
         SummaryRequest request, IServerStreamWriter<SummaryReply> responseStream, ServerCallContext context)
     {
-        var cancellationToken = context.CancellationToken;
-        //_logger.LogInformation("Creating new route to OCR");
-        var serverAddress = Environment.GetEnvironmentVariable("GRPC_SERVER_ADDRESS");
-        using var channel = GrpcChannel.ForAddress(serverAddress);
-        var client = new Ocr.OcrClient(channel);
-
         // Download documents
-        //var records = GetGeoDocRecords(request.Gnr, request.Bnr, request.Snr);
-        await _client.AuthenticateAsync();
-        var searchResult = await _client.SearchDocumentsAsyncVedtak(request.Gnr, request.Bnr, request.Snr);
+        var searchResult = await _archiveController.SearchDocumentsAsync(request.Gnr, request.Bnr, request.Snr);
         
-        Console.WriteLine(searchResult);
         if (searchResult.Count == 0)
         {
             return null;
         }
-
-        await _client.DownloadVedtakDocumentsAsync(searchResult, request.Gnr, request.Bnr, request.Snr);
         
+        var targetDirectory = $"Files/{request.Gnr}-{request.Bnr}-{request.Snr}";
+
+        await _archiveController.DownloadDocumentsAsync(searchResult, targetDirectory);
+
         // Get text from document
-        string folder = $"Files/{request.Gnr}-{request.Bnr}-{request.Snr}/";
-        var files = Directory.GetFiles(folder);
+        //string folder = $"Files/{request.Gnr}-{request.Bnr}-{request.Snr}/";
+        var files = Directory.GetFiles(targetDirectory);
 
         try
         {
+            using var channel = GrpcChannel.ForAddress(_serverAddress);
+            var cancellationToken = context.CancellationToken;
+            var client = new Ocr.OcrClient(channel);
             var processingTasks = files.Select(file => ProcessFileAsync(Array.IndexOf(files, file), file, context, responseStream, client, cancellationToken)).ToList();
             await Task.WhenAll(processingTasks);
         } catch {
-            Console.WriteLine("Error processing files");
+            _logger.LogError("Error processing files");
         }
 
         return null;
