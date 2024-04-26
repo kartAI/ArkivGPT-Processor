@@ -10,7 +10,7 @@ public interface IOCRController
     /// <param name="context"></param>
     /// <param name="filename"></param>
     /// <param name="client"></param>
-    /// <returns></returns>
+    /// <returns>Returns the OCR of the file as a string</returns>
     Task<string> GetOCR(ServerCallContext context, string filename, Ocr.OcrClient client);
 
 }

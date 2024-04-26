@@ -30,6 +30,7 @@ public class SummaryService : Summary.SummaryBase
     
     public SummaryService(ILogger<SummaryService> logger)
     {
+        _logger = logger;
         _circuitBreakerPolicy = Policy
             .Handle<RpcException>()
             .AdvancedCircuitBreakerAsync(
@@ -43,18 +44,16 @@ public class SummaryService : Summary.SummaryBase
                 },
                 onReset: () => _logger.LogInformation("Advanced Circuit reset.")
             );
-        
-        _logger = logger;
-        _archiveController = new GeodocController();
+
         _aiController = new AIController(_endPoint, _apiKey);
         _ocrController = new OCRController(_circuitBreakerPolicy);
+        _archiveController = new GeodocController();
     }
 
 
     private async Task ProcessFileAsync(int fileId, string file, ServerCallContext context, IServerStreamWriter<SummaryReply> responseStream, Ocr.OcrClient client, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Getting GPT response");
-        
+        _logger.LogInformation("Getting OCR response");
         string ocrText = await _ocrController.GetOCR(context, file, client);
 
         if (cancellationToken.IsCancellationRequested)
@@ -63,6 +62,7 @@ public class SummaryService : Summary.SummaryBase
             return;
         }
         
+        _logger.LogInformation("Getting GPT response");
         string gptResponse = await _aiController.GetAIResponse(ocrText);
 
         _logger.LogInformation("Sending back response to gateway");
@@ -76,7 +76,7 @@ public class SummaryService : Summary.SummaryBase
     }
     
 
-    public override async Task<SummaryReply> SaySummary(
+    public override async Task<SummaryReply?> SaySummary(
         SummaryRequest request, IServerStreamWriter<SummaryReply> responseStream, ServerCallContext context)
     {
         // Download documents
@@ -87,23 +87,20 @@ public class SummaryService : Summary.SummaryBase
             return null;
         }
         
-        var targetDirectory = $"Files/{request.Gnr}-{request.Bnr}-{request.Snr}";
+        var targetDirectory = $"Files/{request.Gnr}-{request.Bnr}-{request.Snr}/";
 
         await _archiveController.DownloadDocumentsAsync(searchResult, targetDirectory);
 
-        // Get text from document
-        //string folder = $"Files/{request.Gnr}-{request.Bnr}-{request.Snr}/";
-        var files = Directory.GetFiles(targetDirectory);
-
         try
         {
+            var files = Directory.GetFiles(targetDirectory);
             using var channel = GrpcChannel.ForAddress(_serverAddress);
             var cancellationToken = context.CancellationToken;
             var client = new Ocr.OcrClient(channel);
             var processingTasks = files.Select(file => ProcessFileAsync(Array.IndexOf(files, file), file, context, responseStream, client, cancellationToken)).ToList();
             await Task.WhenAll(processingTasks);
-        } catch {
-            _logger.LogError("Error processing files");
+        } catch (Exception e){
+            _logger.LogError("Error processing files : " + e.Message);
         }
 
         return null;

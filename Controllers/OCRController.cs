@@ -37,7 +37,7 @@ public class OCRController : IOCRController
         catch (RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.Cancelled)
         {
             Console.WriteLine("OCR stream cancelled.");
-            return null;
+            return "OCR stream cancelled.";
         }
         catch (BrokenCircuitException ex)
         {
