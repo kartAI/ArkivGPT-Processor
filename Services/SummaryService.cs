@@ -20,6 +20,7 @@ public class SummaryService : Summary.SummaryBase
 
     private readonly string _endPoint = File.ReadAllText("../GPT.endpoint");
     private readonly string _apiKey = File.ReadAllText("../GPT.key");
+    private readonly string _deploymentName = File.ReadAllText("../GPT.deploymentName");
 
     private readonly IAIController _aiController;
     private readonly IOCRController _ocrController;
@@ -45,7 +46,7 @@ public class SummaryService : Summary.SummaryBase
                 onReset: () => _logger.LogInformation("Advanced Circuit reset.")
             );
 
-        _aiController = new AIController(_endPoint, _apiKey);
+        _aiController = new AIController(_endPoint, _apiKey, _deploymentName);
         _ocrController = new OCRController(_circuitBreakerPolicy);
         _archiveController = new GeodocController();
     }

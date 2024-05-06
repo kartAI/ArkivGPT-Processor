@@ -8,12 +8,14 @@ public class AIController : IAIController
 {
     private readonly string _endPoint;
     private readonly string _apiKey;
+    private readonly string _deploymentName;
     private readonly ILogger<AIController> _logger;
 
-    public AIController(string endPoint, string apiKey)
+    public AIController(string endPoint, string apiKey, string deploymentName)
     {
         _endPoint = endPoint;
         _apiKey = apiKey;
+        _deploymentName = deploymentName;
         _logger = new LoggerFactory().CreateLogger<AIController>();
     }
     
@@ -30,7 +32,7 @@ public class AIController : IAIController
         {
             var chatCompletionsOptions = new ChatCompletionsOptions()
             {
-                DeploymentName = "AI-gutta-pdf-summarizing",
+                DeploymentName = _deploymentName,
                 Messages =
                 {
                     new ChatRequestSystemMessage("You are an AI assistant that summarizes PDFs. Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved, do not include the location. You are to summarize the PDF in less than 15 words on norwegian, but try to keep as much information as you can. Start with the year always, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
