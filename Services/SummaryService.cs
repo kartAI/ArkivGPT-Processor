@@ -9,8 +9,6 @@ using Grpc.Net.Client;
 using Microsoft.AspNetCore.WebUtilities;
 using ArkivGPT_Processor.Controllers;
 using ArkivGPT_Processor.Interfaces;
-using Polly;
-using Polly.CircuitBreaker;
 
 namespace ArkivGPT_Processor.Services;
 
@@ -27,27 +25,12 @@ public class SummaryService : Summary.SummaryBase
     private readonly IArchiveController _archiveController;
     private readonly string _serverAddress = Environment.GetEnvironmentVariable("GRPC_SERVER_ADDRESS");
     
-    private AsyncCircuitBreakerPolicy _circuitBreakerPolicy;
-    
     public SummaryService(ILogger<SummaryService> logger)
     {
         _logger = logger;
-        _circuitBreakerPolicy = Policy
-            .Handle<RpcException>()
-            .AdvancedCircuitBreakerAsync(
-                failureThreshold: 0.5,  // 50% actions must fail to break circuit
-                samplingDuration: TimeSpan.FromMinutes(2),  // Measure failures over 2 minutes
-                minimumThroughput: 7,  // At least 7 actions in 2 minutes to consider breaking
-                durationOfBreak: TimeSpan.FromMinutes(2),
-                onBreak: (ex, breakDelay) =>
-                {
-                    _logger.LogError($"Advanced Circuit broken: {ex.Message}");
-                },
-                onReset: () => _logger.LogInformation("Advanced Circuit reset.")
-            );
 
         _aiController = new AIController(_endPoint, _apiKey, _deploymentName);
-        _ocrController = new OCRController(_circuitBreakerPolicy);
+        _ocrController = new OCRController();
         _archiveController = new GeodocController();
     }
 
