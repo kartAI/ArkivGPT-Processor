@@ -35,12 +35,14 @@ public class AIController : IAIController
                 DeploymentName = _deploymentName,
                 Messages =
                 {
-                    new ChatRequestSystemMessage("You are an AI assistant that summarizes PDFs. Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved. You are to summarize the PDF in norwegian in less than 100 words, but try to keep as much information as you can. Do not include the address or GNR/BNR in the summary. Start with the year always, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
+                    new ChatRequestSystemMessage("You are an AI assistant that summarizes PDFs. Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved. You are to summarize the PDF in norwegian in less than 30 words. Do not include the address or GNR/BNR in the summary. Start with the year always, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
                     //new ChatRequestSystemMessage("Summarize the PDF acording to the title or what is the important information in the PDF, the most important is if it is approved, do not include the location."),
                     //new ChatRequestSystemMessage("You are to summarize the PDF in less than 15 words on norwegian. Start with the year, YYYY: Dispensasjon godkjent/avslått for Pdf info"),
                     new ChatRequestUserMessage(fullText)
                 },
+                MaxTokens = 100
             };
+            
 
             Response<ChatCompletions> response = await client.GetChatCompletionsAsync(chatCompletionsOptions);
 
